@@ -1,0 +1,309 @@
+#!/bin/bash
+
+
+#####################
+#Valori degli errori
+ERR_OPZIONE=101		#Opzione non riconosciuta
+ERR_PARAMETRO=102  	#Parametro non valido o mancante
+ERR_DOPPIO=103		#Opzione invocata due volte
+ERR_NOFILEPAR=104	#Manca il parametro file (o lista di file)
+ERR_NOSUCHFILE=105	#Il file passato non esiste
+ERR_NOREGFILE=106	#Il file passato no è un regular file
+ERR_NOREAD=107		#Impossibile leggere dal file
+OK=0			#Tutto ok :D
+#####################
+
+
+#########################
+#Variabili che influenzano l'esecuzione dello script
+SCRIPT_NAME="$0"
+LISTA_FILE_PARSATA="" #La lista dei files come letta dalla cmdline
+LISTA_FILE="" #La lista dei files su cui eseguire lo script
+USERNAME="" #il nome utente per cui eseguire lo script
+USER_LIST="" #La lista degli utenti su cui eseguire lo script
+PARTENZA="" #La città di partenza
+ARRIVO="" #La città di arrivo
+
+#########################
+
+#########################
+# Funzioni ausiliare di output
+
+print_usage() {
+	echo -e "Utilizzo: $0 log1..logN [-u nomeutente] [-p città_partenza] [-a città_arrivo]" >&2
+	echo -e "Scrivi \"$0 --help\" per maggiori informazioni.\n" >&2
+}
+
+#prende $ERR_CODE ed eventualmente $PARAMETRO e stampa l'errore :D
+print_error() {	
+	if [ -z "$1" ] 
+	then 
+		return
+	fi
+
+	case "$1" in
+	$ERR_OPZIONE)	echo -e "Opzione $2 non riconosciuta" >&2
+			;;
+
+	$ERR_PARAMETRO) echo -e "L'opzione $2 richiede un argomento" >&2
+			;;
+
+	$ERR_DOPPIO)    echo -e "Opzione $2 invocata due volte" >&2
+			;;
+
+	$ERR_NOFILEPAR) echo -e "Nessun file passato come argomento" >&2
+			;;
+
+	$ERR_NOSUCHFILE) echo -e "Il file $2 non esiste" >&2
+			 ;;
+
+	$ERR_NOREGFILE) echo -e "Il file $2 non è un regular file" >&2
+			;;
+
+	$ERR_NOREAD)	echo -e "Impossibile leggere dal file $2" >&2
+			;;
+
+	esac
+	print_usage
+	exit $1
+}
+
+print_help(){
+	echo -e "Utilizzo: $0 log1..logN [-u nomeutente] [-p città_partenza] [-a città_arrivo]"
+	echo -e "Stampa su stdout le statistiche offline di utilizzo del servizio di car-sharing\n\n"
+	echo -e "Argomenti:\n"
+	
+	echo -e "\tlog1..logN\n\t\tLista di file contenenti i log del servizio di carsharing\n"
+	echo -e "\t-u nomeutente\n\t\tStampa le statistiche solo per l'utente nomeutente\n"
+	echo -e "\t-p città_partenza\n\t\tStampa le statistiche per le rotte che partono da città_partenza\n"
+	echo -e "\t-a città_Arrivo\n\t\tStampa le statistiche per le rotte che arrivano a città_arrivo\n\n"
+	echo -e "Le opzioni possono essere combinate. Ad esempio\n"
+	echo -e "\t$SCRIPT_NAME log1..logN -u nomeutente -a città\n\nStampa le statistiche per nomeutente,tenendo conto delle rotte che arrivano a città\n"
+	exit $OK
+}
+#######################
+
+
+############## QUi inizia lo script #################
+
+
+until [ -z "$1" ]
+do
+	case "$1" in
+
+	"-u")	if [ "$USERNAME" == "" ]
+		then
+			if [ -z "$2" ]
+			then
+				print_error $ERR_PARAMETRO $1
+				exit 
+			else
+				USERNAME="$2"
+				USER_LIST="$2"
+				shift 2 || break 
+			fi
+		else
+			print_error $ERR_DOPPIO $1
+			exit
+		fi ;;
+
+	"-a")	if [ "$ARRIVO" == "" ]
+		then
+			if [ -z "$2" ]
+			then
+				print_error $ERR_PARAMETRO $1
+				exit
+			else
+				ARRIVO="$2"
+				shift 2 || break 
+			fi
+		else
+			print_error $ERR_DOPPIO $1
+			exit
+		fi ;;
+
+	"-p")	if [ "$PARTENZA" == "" ]
+		then
+			if [ -z "$2" ]
+			then
+				print_error $ERR_PARAMETRO $1
+				exit
+			else
+				PARTENZA="$2"
+				shift 2 || break 
+			fi
+		else
+			print_error $ERR_DOPPIO $1
+			exit
+		fi ;;
+
+
+	"--help") print_help
+		  exit
+		  ;;
+
+	-?)	  print_error $ERR_OPZIONE $1
+		  exit
+		  ;;
+
+	*)	LISTA_FILE_PARSATA+="$1 "
+		shift
+		;;
+		 
+	esac
+
+done
+
+#Controlla che FILE non sia nulla
+if [ -z "$LISTA_FILE_PARSATA" ]
+then
+	print_error $ERR_NOFILEPAR 
+	exit
+fi
+
+
+for i in $LISTA_FILE_PARSATA
+do
+	#Controlla che esista (esci altrimenti)
+	if ! [ -e $i ]
+	then
+		print_error $ERR_NOSUCHFILE $i
+		exit
+	fi
+	
+	#Controlla che sia un file regolare e non una directory o altro (esci altrimenti)
+	if ! [ -f $i ]
+	then
+		print_error $ERR_NOREGFILE $i
+		exit
+	fi 
+	
+	#Controlla che puoi leggere (esci altrimenti)
+	if ! [ -r $i ]
+	then
+		print_error $ERR_NOREAD $i			
+		exit
+	fi 
+	
+	#EXTRA: Se file vuoto escludilo :D (continua normalmente, solo una ottimizzazione)
+	if [ -s $i ]
+	then
+		LISTA_FILE+="$i " #Non ha dimensione 0
+	fi
+done
+
+#Adesso devo fare il lavoro sporco sulla lista dei files. E tenere conto se mi hanno o meno dato dei parametri -.-
+declare -a ROWS #tutte le righe valide
+let INDICE=-1 #Per tenere conto di quante righe leggo :D
+
+for i in $LISTA_FILE
+do
+	exec 4<"$i"
+	while read -u4 RIGA
+	do
+		POS=$(expr index "$RIGA" \$)
+		
+
+		PRIMO=${RIGA:0:POS-1}    #Il primo campo è un utente
+		NRIGA=${RIGA:POS}
+
+
+		POS=$(expr index "$NRIGA" \$)
+		SECONDO=${NRIGA:0:POS-1}  #Il secondo campo è un altro utente
+
+
+		NRIGA=${NRIGA:POS}
+		POS=$(expr index "$NRIGA" $)
+		TERZO=${NRIGA:0:POS-1}    #Il terzo campo è la città di partenza
+		
+
+		ULTIMO=${NRIGA##*$} #L'ultimo campo è la città di arrivo
+
+
+		if [ "$PARTENZA" != "" ]       #Se mi hanno passato -p città
+		then
+			if [ "$PARTENZA" != "$TERZO" ]
+			then
+				continue #$ROW non serve
+			fi
+		fi
+		
+		if [ "$ARRIVO" != "" ]  #Se mi hanno passato -a città
+		then
+			if [ "$ARRIVO" != "$ULTIMO" ]
+			then
+				continue
+			fi
+		fi
+		
+		if [ "$USERNAME" != "" ] #Se mi hanno passato -u utente
+		then
+			if [ "$USERNAME" != "$PRIMO" ] && [ "$USERNAME" != "$SECONDO" ] #Se utente non compare nella riga, allora non mi serve quella riga
+			then
+				continue
+			fi
+		else
+			if [ "$(echo $USER_LIST | grep $PRIMO | wc -l)" == "0" ] #Se gli utenti non sono già nella lista ce li metto
+			then
+				USER_LIST+="$PRIMO " #$PRIMO non era ancora in list
+			fi
+			
+			if [ "$(echo $USER_LIST | grep $SECONDO | wc -l)" == "0" ]
+			then
+				USER_LIST+="$SECONDO " #$SECONDO non era ancora in lista
+			fi
+		fi
+
+		#Se sono qui la stringa contenuta in $RIGA è valida, la salvo nell'array delle righe
+		let INDICE+=1 #Incremento il numero di righe che ho inserito 
+		ROWS[$INDICE]=$RIGA
+	done #Fine while
+	exec 4>&- #Chiudo il file descriptor dell'i-esimo file
+done #fine for
+
+#Vediamo se l'array ROWS contiene qualche linea
+if [ $INDICE -eq -1 ]
+then
+	if [[ "$USERNAME" != "" ]]
+	then
+		echo "$USERNAME:0:0"
+	fi
+	exit $OK   #L'array è vuoto, non c'è nessuna rotta valida
+fi
+
+
+
+
+#A questo punto ROWS[] contiene tutte e sole le righe valide :D
+#Per ogni utente conto i passaggi dati e scroccati
+for i in $USER_LIST	
+do
+	OFFERTE=0
+	RICHIESTE=0
+
+	for j in $(seq 0 $((${#ROWS[@]} - 1)))
+	do
+		LROW=${ROWS[$j]} #Mi copio la riga in una variabile locale, perchè ROWS[j] mi serve anche dopo per gli altri utenti
+
+		POS=$(expr index "$LROW" \$) #La posizione del primo $
+		PRIMO=${LROW:0:POS-1} #Primo utente nella stringa
+
+
+		LROW=${LROW:$POS} #Scorro la riga
+
+		POS=$(expr index "$LROW" \$) #La posizione del secondo $
+		SECONDO=${LROW:0:POS-1} #Il secondo utente
+		
+		if [ "$PRIMO" == "$i" ]
+		then
+			((OFFERTE+=1))
+		elif [ "$SECONDO" == "$i" ]
+		then
+			((RICHIESTE+=1))
+		fi
+	done #fine del for interno
+	
+	echo "$i:$OFFERTE:$RICHIESTE"
+done
+
+exit $OK
