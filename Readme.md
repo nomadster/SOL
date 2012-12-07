@@ -4,7 +4,7 @@ It is a simple client-server car sharing system.
 
 The server has multiple _worker_ threads, each of which is responsible of handling a communication 
 session with a single client.
-The session basically consist of request to update and/or retrieve information on a mutual-exclusively
+These session basically consist of request to update and/or retrieve information on a mutual-exclusively
 accessed graph, representing a network of roads, plus some authetication and error handling.
 The communication is done via UNIX Sockets, using a pre-defined protocol.
 Once the _worker_ has validated the request, this is queued in a specific structure to be served later by a dedicated
