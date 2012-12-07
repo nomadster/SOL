@@ -16,4 +16,4 @@ There is also a bash script that makes some statistics among the matches between
 
 This project makes use of POSIX-Threads.
 
-If you can read italian you may want to take a look at [this](https://www.dropbox.com/s/wtnibuugnq5dgem/SOL.pdf)
+If you can read italian you may want to take a look at [this](https://www.dropbox.com/s/wtnibuugnq5dgem/SOL.pdf) report.
