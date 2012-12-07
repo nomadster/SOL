@@ -1,6 +1,6 @@
 This is my final term project, written for the Computer Science course _"Laboratorio di Sistemi Operativi"_  (SOL) at the University of Pisa.
 
-It is a simple client-server car pooling system.
+It is a simple client-server car sharing system.
 
 The server has multiple _worker_ threads, each of which is responsible of handling a communication 
 session with a single client.
